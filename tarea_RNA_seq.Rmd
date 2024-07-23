@@ -1,0 +1,986 @@
+# Análisis de RNAseq de *Arabidopsis thaliana* ante la mejora de la resistencia a la deshidratación mediante la interacción con *Aeromonas* sp. atraída por flavonoides del microbioma de la raíz
+
+#### Autores:
+
+Julio Ramírez Guerrero, Julián Román Camacho, Silvestre Ruano Rodríguez, Manuel Racero de la Rosa, Rafael Rubio Ramos.
+
+## Introducción
+
+### Antecedentes
+
+Ante la alarmante problemática climática actual, se pretende encontrar plantas que resistan condiciones de estrés abiótico. Los flavonoides (metabolito secundario sintetizados por la planta cuando se encuentra sometida a estrés) pueden ser de gran ayuda para determinar la relación planta-microbioma , y ver como esta mejora la resistencia al estrés hídrico. Esta relación está bien estudiada en especies de bacterias nodulantes, pero no tanto en bacterias no nodulantes como las de la familia Aeromonadaceae. Por tanto, la motivación del estudio es comprobar el comportamiento de plantas de *Arabidopsis thaliana* en presencia/ausencia de *Aeromonas* sp.
+
+### Objetivo
+
+Comprobar la expresión diferencial en *Arabidopsis thaliana*, en presencia/ausencia de *Aeromonas* sp. y condiciones de sequía.
+
+## Materiales y Métodos
+
+### Diseño Experimental
+
+Para nuestro diseño experimental hemos usado como referencia el número de acceso GSE184872 de la web GEO (Gene Expression Omnibus).
+
+Tenemos una serie de puntos que describen las condiciones de nuestro estudio, según el tratamiento que hemos aplicado a *Arabidopsis thaliana*, planta que es el organismo modelo de este estudio.
+
+-   Sin tratamientos (Controles):
+
+    -   GSM5599109 At_mock_1
+    -   GSM5599110 At_mock_2
+    -   GSM5599111 At_mock_3
+
+-   Tratamiento en sequía:
+
+    -   GSM5599112 At_Drought_1
+    -   GSM5599113 At_Drought_2
+    -   GSM5599114 At_Drought_3
+
+-   Tratamiento con aeromonas:
+
+    -   GSM5599115 At_H1_1
+    -   GSM5599116 At_H1_2
+    -   GSM5599117 At_H1_3
+
+-   Tratamientos en sequía y con aeromonas:
+
+    -   GSM5599118 At_H1_Drought_1
+    -   GSM5599119 At_H1_Drought_2
+    -   GSM5599120 At_H1_Drought_3
+
+### Flujo de trabajo
+
+A continuación, se muestra la serie de pasos que se han seguido para realizar el análisis matemático/computacional de los datos RNA-seq.
+
+En primer lugar, se prepara el espacio de trabajo en linux, aquí se toman los datos del artículo de referencia y se descargan mediante sbatch. Esto proporcionará los archivos tanto .gz como .gtf. Mediante un fastq-dump se convierten los archivos SRA en FASTQ, posteriormente se realizará el análisis de calidad con fastqc de los fastq.gz y se revisará que esten correctamente analizados sin contaminaciones u otra alteración.
+
+Seguido, se ejecutará hisat2 en los fastq.gz y así, se mapearán las lecturas de secuencias cortas contra el genoma de referencia, dando archivos .sam que pesan demasiado y son ineficientes a la hora de manipular los datos, por lo que se pasan a .bam mediante samtools obteniendo así archivos de menor peso. También se generarán los índices. Con los alineamientos de hisat2 se realiza un ensamblado de los transcritos de nuestro .bam con la herramienta stringtie. Una vez ensambladas cada una de las muestras en los correspondientes .gtf es necesario recopilar el transcriptoma completo, por ello se unen los .gtf con merge stringtie. Y una vez se obtiene el transcriptoma completo se cuantifica la expresión génica.
+
+Se continua el análisis en el programa R. Con la librería ballgown se leen los datos de expresión obtenidos anteriormente, se establecen las 4 condiciones del análisis, cada una con sus 3 réplicas. Se extraen los niveles de expresión tanto por FPKM y TPM, luego, se normalizan los datos y se comparan los boxplot antes y después de normalizar. Se comprueba la diferencia entre réplicas con un scatterplot. Con el análisis de PCA y clustering jerárquico se verifican las diferentes distribuciones de los grupos y su variabilidad. Con la matriz de expresión se agrupan los datos y se comprueban su distribución con scatterplots que representan las diferentes condiciones y volcano plots para estudiar la magnitud biológica de las diferencias en la expresión génica entre diferentes condiciones experimentales. Y por último, un enriquecimiento funcional para destacar que procesos biológicos están más representados.
+
+![Workflow de RNAseq.](images/workflow.webp)
+
+## Resultados
+
+### Análisis de la calidad
+
+En el gráfico correspondiente al análisis de calidad de la muestra 1, los resultados obtenidos son de alta calidad, ya que los boxplot del gráfico se mantienen en todo momento en el área coloreada en verde. En el resto de muestras los resultados son similares, manteniéndose la alta calidad de las mismas.
+
+Es necesario realizar un pre-procesamiento de los datos para poder comparar los datos de calidad de distintas muestras. Se empleó un algoritmo de normalización para normalizar los datos y poder realizar el análisis adecuadamente.
+
+![Análisis de calidad.](images/calidad.webp)
+
+### Análisis de la distribución global de la Expresión Génica
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = F)
+```
+
+```{r}
+library(ballgown)
+```
+
+```{r}
+pheno.data <- read.csv("pheno_data.csv")
+pheno.data
+```
+
+```{r}
+bg.data <- ballgown(dataDir = ".", samplePattern = "sample", pData=pheno.data)
+bg.data
+sampleNames(bg.data)
+```
+
+```{r}
+gene.expression <- gexpr(bg.data)
+head(gene.expression)
+dim(gene.expression)
+gene.names <- rownames(gene.expression)
+```
+
+```{r}
+colnames(gene.expression) <- c("ctl_water1","ctl_water2","ctl_water3","ctl_drought1","ctl_drought2","ctl_drought3", "h1_water1","h1_water2","h1_water3","h1_drought1","h1_drought2","h1_drought3")
+```
+
+```{r}
+gene.expression.1 <- gene.expression + 1
+```
+
+```{r}
+write.table(x = gene.expression.1,file = "tarea1_gene_expression.tsv",
+            quote = F,row.names = F,
+            sep = "\t")
+```
+
+```{r}
+boxplot(gene.expression, outline=F,col=rainbow(12),ylab="Gene Expression (FPKM)",
+        cex.lab=1.5)
+
+boxplot(log2(gene.expression.1), outline=F,col=rainbow(12),
+        ylab="log2(Gene Expression)",
+        cex.lab=1.5)
+```
+
+Se hace el análisis de la expresión de los datos por TPM, para comprobar que los resultados son iguales que los realizados por FPKM:
+
+```{r}
+tpm <- gene.expression.1 / colSums(gene.expression.1) * 1e6
+
+## Guardar los datos de expresión génica en formato TPM
+write.table(x = tpm, file = "tarea1_gene_expression_tpm.tsv", quote = F, row.names = F, sep = "\t")
+
+## Representación de la distribución global de la expresión génica en TPM:
+boxplot(tpm, outline = F, col = rainbow(12), ylab = "Gene Expression (TPM)", cex.lab = 1.5)
+```
+
+La normalización de datos es necesaria ya que durante la preparación de muestras pueden producirse errores que alteren los datos reales que se deberían de obtener. De este modo, corregimos el sesgo producido durante la preparación de muestras y facilita la comparación de resultados entre distintas muestras. Además, la normalización de datos facilita la detección de diferencias significativas en la expresión génica, y previene interpretaciones erróneas porque la normalización elimina las diferencias aparentes que podrían ser resultado de variaciones técnicas en lugar de biológicas
+
+```{r}
+library(NormalyzerDE)
+```
+
+```{r}
+design <- data.frame(sample=colnames(gene.expression),
+                     group=c(rep("ctl_water",3),rep("ctl_drought",3),rep("h1_water",3),rep("h1_drought",3)))
+```
+
+```{r}
+write.table(x = design,file = "normalyzer_design.tsv",quote = F,row.names = F,
+            sep = "\t")
+```
+
+```{r}
+normalyzer(jobName = "Tarea1",designPath = "normalyzer_design.tsv",
+           dataPath = "tarea1_gene_expression.tsv",outputDir = ".")
+```
+
+```{r}
+normalized.gene.expression <- read.table(file="Tarea1/Quantile-normalized.txt", header=T)
+head(normalized.gene.expression)
+rownames(normalized.gene.expression) <- gene.names
+```
+
+![Análisis de normalización del coeficiente de variación intragrupos.](images/Variacion.webp)
+
+Según esta evaluación VSN es la mejor técnica de normalización porque es la que más reduciría el ruido.
+
+![Correlación de Pearson.](images/Pearson.webp) Sin embargo, según el coeficiente de correlación de Pearson VSN no es una técnica adecuada. Por lo que tomamos Quantil como técnica de normalización.
+
+```{r}
+boxplot(normalized.gene.expression, outline=F,col=rainbow(12),
+        ylab="log2(FPKM + 1)",cex.lab=1.5)
+```
+
+Los diagramas salen alineados, indicando que están en la misma escala y son comparables, por lo tanto, se confirma que se ha realizado la normalización de datos.
+
+**Scatterplots para comparar réplicas**
+
+```{r}
+par(mfrow=c(3,4))
+
+plot(x = normalized.gene.expression[,"ctl_water1"],
+     y = normalized.gene.expression[,"ctl_water2"],
+     pch=19,col="black",xlab="ctl_water1",ylab="ctl_water2",cex=0.5)
+text(x=3,y=10,
+     labels = paste(c(
+      "cor = ",
+      round(100*cor(normalized.gene.expression[,"ctl_water1"],
+                    normalized.gene.expression[,"ctl_water2"]),
+            digits = 2),
+      "%"), collapse=""))
+
+
+plot(x = normalized.gene.expression[,"ctl_water1"],
+     y = normalized.gene.expression[,"ctl_water3"],
+     pch=19,col="black",xlab="ctl_water1",ylab="ctl_water3",cex=0.5)
+text(x=3,y=10,
+     labels = paste(c(
+       "cor = ",
+       round(100*cor(normalized.gene.expression[,"ctl_water1"],
+                     normalized.gene.expression[,"ctl_water3"]),
+             digits = 2),
+       "%"), collapse=""))
+
+
+plot(x = normalized.gene.expression[,"ctl_water2"],
+     y = normalized.gene.expression[,"ctl_water3"],
+     pch=19,col="black",xlab="ctl_water2",ylab="ctl_water3",cex=0.5)
+text(x=3,y=10,
+     labels = paste(c(
+       "cor = ",
+       round(100*cor(normalized.gene.expression[,"ctl_water2"],
+                     normalized.gene.expression[,"ctl_water3"]),
+             digits = 2),
+       "%"), collapse=""))
+
+
+plot(x = normalized.gene.expression[,"ctl_drought1"],
+     y = normalized.gene.expression[,"ctl_drought2"],
+     pch=19,col="black",xlab="ctl_drought1",ylab="ctl_drought2",cex=0.5)
+text(x=3,y=10,
+     labels = paste(c(
+       "cor = ",
+       round(100*cor(normalized.gene.expression[,"ctl_drought1"],
+                     normalized.gene.expression[,"ctl_drought2"]),
+             digits = 2),
+       "%"), collapse=""))
+
+
+plot(x = normalized.gene.expression[,"ctl_drought1"],
+     y = normalized.gene.expression[,"ctl_drought3"],
+     pch=19,col="black",xlab="ctl_drought1",ylab="ctl_drought3",cex=0.5)
+text(x=3,y=10,
+     labels = paste(c(
+       "cor = ",
+       round(100*cor(normalized.gene.expression[,"ctl_drought1"],
+                     normalized.gene.expression[,"ctl_drought3"]),
+             digits = 2),
+       "%"), collapse=""))
+
+
+plot(x = normalized.gene.expression[,"ctl_drought2"],
+     y = normalized.gene.expression[,"ctl_drought3"],
+     pch=19,col="black",xlab="ctl_drought2",ylab="ctl_drought3",cex=0.5)
+text(x=3,y=10,
+     labels = paste(c(
+       "cor = ",
+       round(100*cor(normalized.gene.expression[,"ctl_drought2"],
+                     normalized.gene.expression[,"ctl_drought3"]),
+             digits = 2),
+       "%"), collapse=""))
+
+
+plot(x = normalized.gene.expression[,"h1_water1"],
+     y = normalized.gene.expression[,"h1_water2"],
+     pch=19,col="black",xlab="h1_water1",ylab="h1_water2",cex=0.5)
+text(x=3,y=10,
+     labels = paste(c(
+       "cor = ",
+       round(100*cor(normalized.gene.expression[,"h1_water1"],
+                     normalized.gene.expression[,"h1_water2"]),
+             digits = 2),
+       "%"), collapse=""))
+
+
+plot(x = normalized.gene.expression[,"h1_water1"],
+     y = normalized.gene.expression[,"h1_water3"],
+     pch=19,col="black",xlab="h1_water1",ylab="h1_water3",cex=0.5)
+text(x=3,y=10,
+     labels = paste(c(
+       "cor = ",
+       round(100*cor(normalized.gene.expression[,"h1_water1"],
+                     normalized.gene.expression[,"h1_water3"]),
+             digits = 2),
+       "%"), collapse=""))
+
+
+plot(x = normalized.gene.expression[,"h1_water2"],
+     y = normalized.gene.expression[,"h1_water3"],
+     pch=19,col="black",xlab="h1_water2",ylab="h1_water3",cex=0.5)
+text(x=3,y=10,
+     labels = paste(c(
+       "cor = ",
+       round(100*cor(normalized.gene.expression[,"h1_water2"],
+                     normalized.gene.expression[,"h1_water3"]),
+             digits = 2),
+       "%"), collapse=""))
+
+
+plot(x = normalized.gene.expression[,"h1_drought1"],
+     y = normalized.gene.expression[,"h1_drought2"],
+     pch=19,col="black",xlab="h1_drought1",ylab="h1_drought2",cex=0.5)
+text(x=3,y=10,
+     labels = paste(c(
+       "cor = ",
+       round(100*cor(normalized.gene.expression[,"h1_drought1"],
+                     normalized.gene.expression[,"h1_drought2"]),
+             digits = 2),
+       "%"), collapse=""))
+
+
+plot(x = normalized.gene.expression[,"h1_drought1"],
+     y = normalized.gene.expression[,"h1_drought3"],
+     pch=19,col="black",xlab="h1_drought1",ylab="h1_drought3",cex=0.5)
+text(x=3,y=10,
+     labels = paste(c(
+       "cor = ",
+       round(100*cor(normalized.gene.expression[,"h1_drought1"],
+                     normalized.gene.expression[,"h1_drought3"]),
+             digits = 2),
+       "%"), collapse=""))
+
+
+plot(x = normalized.gene.expression[,"h1_drought2"],
+     y = normalized.gene.expression[,"h1_drought3"],
+     pch=19,col="black",xlab="h1_drought2",ylab="h1_drought3",cex=0.5)
+text(x=3,y=10,
+     labels = paste(c(
+       "cor = ",
+       round(100*cor(normalized.gene.expression[,"h1_drought2"],
+                     normalized.gene.expression[,"h1_drought3"]),
+             digits = 2),
+       "%"), collapse=""))
+```
+
+En los Scatter plot de la similitud de réplicas los resultados han indicado podemos destacar que la correlación entre las réplicas es muy alta, la mayoría alrededor del 99%, indicando así buena relación entre las réplicas.
+
+Luego, podemos ver en la mayoría de gráficos muy baja dispersión entre los puntos formando así en la mayoría de los casos una figura similar a una línea recta.
+
+Por último, también destacar que la réplica ctl_drought2 tiene una mayor dispersión de datos y por lo tanto mayor variabilidad, dado que a la hora de hacer el estudio se observó que ctl_drought2 se distanciaba más con respecto al resto de datos.
+
+**Análisis de componentes principales y clustering jerárquico**
+
+```{r}
+library(FactoMineR)
+library(factoextra)
+```
+
+```{r}
+pca.gene.expression <- data.frame(colnames(normalized.gene.expression),
+                                  t(normalized.gene.expression))
+colnames(pca.gene.expression)[1] <- "Sample"
+head(pca.gene.expression)
+```
+
+```{r, warning=FALSE}
+res.pca <- PCA(pca.gene.expression, graph = FALSE,scale.unit = TRUE,quali.sup = 1 )
+res.hcpc <- HCPC(res.pca, graph=FALSE,nb.clust = 4)   
+fviz_dend(res.hcpc,k=,
+          cex = 0.75,                       
+          palette = "Set1",               
+          rect = TRUE, rect_fill = TRUE, 
+          rect_border = "Set1",           
+          type="rectangle",
+          labels_track_height = 1400      
+)
+```
+
+En el dendograma, en un principio deberíamos tener cada condición agrupada con sus tres réplicas, sin embargo, vemos que el ctl_drought2 está aislado en un cluster porque sus datos se alejan de su grupo condición. Con lo cual **podríamos** eliminar dicha réplica ya que altera la estabilidad de los datos.
+
+Además, también se visualiza una alteración en el cluster referente a "water", en el que h1_water3 está desviado de su grupo condición h1_water. Lo mismo ocurre con ctl_water1 que está más cercano al grupo h1_water. Esto es debido a la variabilidad de datos obtenida en estas condiciones.
+
+```{r}
+fviz_pca_ind(res.pca, 
+             col.ind = c("ctl_water", "ctl_water", "ctl_water", "ctl_drought", "ctl_drought", "ctl_drought", "h1_water", "h1_water", "h1_water", "h1_drought", "h1_drought", "h1_drought"), 
+             pointsize = 2, 
+             pointshape = 21,
+             fill = "black",
+             repel = TRUE, 
+             addEllipses = TRUE, 
+             ellipse.type = "confidence",
+             legend.title = "Conditions",
+             title = "",
+             show.legend = TRUE,
+             show.guide = TRUE
+)
+```
+
+En el gráfico de elipses de confianza, las elipses indican la agrupación de los datos, en este caso todas las réplicas aparecen agrupadas en sus respectivas condiciones. Tanto ctl_water, como h1_drought como h1_water aparecen correctamente agrupados. Las réplicas de estos grupos no están muy alejadas del punto medio indicando poca variabilidad de los datos.
+
+De nuevo, vemos que la condición ctl_drought2 está bastante dispersa con respecto a las réplicas de su misma condición, formando una elipse que se asemeja más a una recta.
+
+A diferencia del dendograma, vemos en este gráfico que las réplicas están bien agrupadas.
+
+### Análisis de Expresión Génica Diferencial
+
+**Comparación del transcriptoma generado con el de referencia**
+
+Antes de seguir avanzando con el análisis de datos, es conveniente confirmar que la anotación utilizada (es decir, la descargada de la base de datos) es adecuada para el estudio. Para ello, podemos comparar el transcriptoma de la base de datos con los transcritos que se han detectado en total en el estudio (en todas las muestras).
+
+![Comparación de transcriptomas.](images/gffcompare.webp) Como podemos ver, el transcriptoma utilizado contiene el 100% de los transcritos observados.
+
+**Visualización del mapeo**
+
+Podemos observar el resultado del mapeo en IGV. En la siguiente imagen se muestran algunas de las lecturas que han mapeado en el gen AT4G33100.
+
+![Captura de IGV.](images/captura_igv.webp) Cada línea representa una lectura, de forma que los rectángulos grises son secuencias del genoma que se encuentran en la lectura y las líneas entre los rectángulos corresponden a fragmentos que están presentes en el genoma, pero no en las lecturas. Como podemos observar en la anotación, estas zonas se corresponden con los intrones del gen (líneas azules).
+
+### Análisis de Expresión Génica Diferencial
+
+En primer lugar, vamos a usar scatterplots para visualizar el efecto de los distintos tratamientos que se realizan en el estudio.
+
+```{r}
+# Calculamos la expresión media de cada gen en cada condición
+ctl_water <- (normalized.gene.expression[,"ctl_water1"] + normalized.gene.expression[,"ctl_water2"]+ normalized.gene.expression[,"ctl_water3"])/3
+
+ctl_drought <- (normalized.gene.expression[,"ctl_drought1"] + normalized.gene.expression[,"ctl_drought2"]+ normalized.gene.expression[,"ctl_drought3"])/3
+
+h1_water <- (normalized.gene.expression[,"h1_water1"] + normalized.gene.expression[,"h1_water2"]+ normalized.gene.expression[,"h1_water3"])/3
+
+h1_drought <- (normalized.gene.expression[,"h1_drought1"] + normalized.gene.expression[,"h1_drought2"]+ normalized.gene.expression[,"h1_drought3"])/3
+
+mean.expression <- matrix(c(ctl_water,ctl_drought, h1_water,h1_drought),ncol=4)
+colnames(mean.expression) <- c("ctl_water","ctl_drought","h1_water","h1_drought")
+rownames(mean.expression) <- rownames(normalized.gene.expression)
+head(mean.expression)
+
+
+par(mfrow=c(2,3))
+
+plot(ctl_water,ctl_drought,pch=19,cex=0.7,xlab="ctl_water",
+     ylab="ctl_drought",cex.lab=1.25,col="black")
+
+plot(h1_water,h1_drought,pch=19,cex=0.7,xlab="h1_water",
+     ylab="h1_drought",cex.lab=1.25,col="black")
+
+plot(ctl_drought,h1_drought,pch=19,cex=0.7,xlab="ctl_drought",
+     ylab="h1_drought",cex.lab=1.25,col="black")
+
+plot(ctl_water,h1_water,pch=19,cex=0.7,xlab="ctl_water",
+     ylab="h1_water",cex.lab=1.25,col="black")
+
+plot(ctl_water,h1_drought,pch=19,cex=0.7,xlab="ctl_water",
+     ylab="h1_drought",cex.lab=1.25,col="black")
+```
+
+Podemos ver que el transcriptoma no se ve fuertemente alterado por los tratamientos de sequía e inoculación con *Aeromonas* sp., por lo que tendremos que ser muy permisivos a la hora de determinar qué genes se expresan diferencialmente. En este caso, consideramos genes diferencialmente expresados (DEGs) aquellos genes en los que el cambio observado en la expresión génica sea sustancial y significativo. Se usarán umbrales de \|log2fc\|\>log2(1.5) y q-valor\<0.01.
+
+```{r}
+library(limma)
+# Definimos el diseño experimental y determinamos las comparaciones que se realizarán
+experimental.design <- model.matrix(~ -1+factor(c(1,1,1,2,2,2,3,3,3,4,4,4)))
+colnames(experimental.design) <- c("ctl_water","ctl_drought","h1_water","h1_drought")
+linear.fit <- lmFit(normalized.gene.expression, experimental.design)
+contrast.matrix <- makeContrasts(ctl_drought-ctl_water, h1_drought-h1_water, h1_drought-ctl_drought,h1_water-ctl_water, h1_drought-ctl_water,levels=c("ctl_water","ctl_drought","h1_water","h1_drought"))
+contrast.linear.fit <- contrasts.fit(linear.fit, contrast.matrix)
+contrast.results <- eBayes(contrast.linear.fit)
+```
+
+**Comparación 1. CTL_Drought vs CTL_Water**
+
+El objetivo de esta primera comparación es identificar los genes involucrados en la respuesta a sequía.
+
+```{r}
+ctl_drought.ctl_water <- topTable(contrast.results, number=32833,coef=1,sort.by="logFC")
+log.fold.change <- ctl_drought.ctl_water$logFC
+q.value <- ctl_drought.ctl_water$adj.P.Val
+genes.ids <- rownames(ctl_drought.ctl_water)
+names(log.fold.change) <- genes.ids
+names(q.value) <- genes.ids
+activated.c1 <- genes.ids[log.fold.change > log2(1.5) & q.value < 0.1]
+repressed.c1 <- genes.ids[log.fold.change < - log2(1.5) & q.value < 0.1]
+length(activated.c1)
+length(repressed.c1)
+
+log.q.val <- -log10(q.value)
+plot(log.fold.change,log.q.val,pch=19,col="black",cex=0.8,
+     xlim=c(-6,6),ylim = c(0,4), 
+     xlab="log2(Fold-chage)",ylab="-log10(q-value)",cex.lab=1.5,
+     main="CTL_drought vs CTL_water")
+
+points(x = log.fold.change[activated.c1],
+       y = log.q.val[activated.c1],col="red",cex=0.8,pch=19)
+points(x = log.fold.change[repressed.c1],
+       y = log.q.val[repressed.c1],col="blue",cex=0.8,pch=19)
+arrows(log.fold.change["AT5G02020"],log.q.val["AT5G02020"],2.5,1.2,length=0)
+text(2.8,1.2,"SIS",cex=0.7)
+arrows(log.fold.change["AT4G17500"],log.q.val["AT4G17500"],2,2,length=0)
+text(2.5,2.3,"ERF-1",cex=0.7)
+arrows(log.fold.change["AT4G08950"],log.q.val["AT4G08950"],-2,2,length=0)
+text(-2,2.3,"EX0",cex=0.7)
+
+write.table(activated.c1,file="activated_ctl_drought_ctl_water.txt",row.names = FALSE,quote=FALSE,col.names = FALSE)
+write.table(repressed.c1,file="repressed_ctl_drought_ctl_water.txt",row.names = FALSE,quote=FALSE,col.names = FALSE)
+```
+
+[Genes activados comparación 1](activated_ctl_drought_ctl_water.txt) [Genes reprimidos comparación 1](repressed_ctl_drought_ctl_water.txt)
+
+En esta comparación, se han detectado 112 genes activados y 36 genes reprimidos. Entre los genes activados, encontramos SIS (Salt Induced Serine Rich), proteína que se sabe participa en la tolerancia a salinidad (condición estrechamente relacionada a la baja disponibilidad hídrica).
+
+**Comparación 2. H1_drought vs H1_water**
+
+El objetivo en este caso es determinar qué genes participan en la respuesta a sequía cuando las plantas han sido inoculadas con *Aeromonas*.
+
+```{r}
+h1_drought.h1_water <- topTable(contrast.results, number=32833,coef=2,sort.by="logFC")
+log.fold.change <- h1_drought.h1_water$logFC
+q.value <- h1_drought.h1_water$adj.P.Val
+genes.ids <- rownames(h1_drought.h1_water)
+names(log.fold.change) <- genes.ids
+names(q.value) <- genes.ids
+activated.c2 <- genes.ids[log.fold.change > log2(1.5) & q.value < 0.1]
+repressed.c2 <- genes.ids[log.fold.change < - log2(1.5) & q.value < 0.1]
+length(activated.c2)
+length(repressed.c2)
+
+log.q.val <- -log10(q.value)
+plot(log.fold.change,log.q.val,pch=19,col="black",cex=0.8,
+     xlim=c(-6,6),ylim = c(0,4), 
+     xlab="log2(Fold-chage)",ylab="-log10(q-value)",cex.lab=1.5,
+     main="H1_drought vs H1_water")
+
+points(x = log.fold.change[activated.c2],
+       y = log.q.val[activated.c2],col="red",cex=0.8,pch=19)
+points(x = log.fold.change[repressed.c2],
+       y = log.q.val[repressed.c2],col="blue",cex=0.8,pch=19)
+arrows(log.fold.change["AT3G23550"],log.q.val["AT3G23550"],2.5,2.5,length=0)
+text(2.9,2.5,"DTX18",cex=0.7)
+arrows(log.fold.change["AT1G73500"],log.q.val["AT1G73500"],2.3,1.8,length=0)
+text(2.6,1.8,"MKK9",cex=0.7)
+arrows(log.fold.change["AT5G15600"],log.q.val["AT5G15600"],-2,1,length=0)
+text(-2,1,"EX0",cex=0.7)
+
+
+write.table(activated.c2,file="activated_h1_drought_h1_water.txt",row.names = FALSE,quote=FALSE,col.names = FALSE)
+write.table(repressed.c2,file="repressed_h1_drought_h1_water.txt",row.names = FALSE,quote=FALSE,col.names = FALSE)
+```
+
+[Genes activados comparación 2](activated_h1_drought_h1_water.txt) [Genes reprimidos comparación 2](repressed_h1_drought_h1_water.txt)
+
+Con los criterios seleccionados, encontramos 282 genes activados y 45 genes reprimidos. En este caso, uno de los genes activados es la proteína quinasa activada por mitógenos MKK9, que tiene función de señalización intracelular.
+
+**Comparación 3. H1_drought vs CTL_drought.**
+
+Con esta comparación, analizamos el efecto que tiene inocular con *Aeromonas* las raíces de *Arabidopsis*, en condiciones de sequía. Así, buscamos genes cuya expresión cambia gracias a *Aeromonas*.
+
+```{r}
+h1_drought.ctl_drought <- topTable(contrast.results, number=32833,coef=3,sort.by="logFC")
+log.fold.change <- h1_drought.ctl_drought$logFC
+q.value <- h1_drought.ctl_drought$adj.P.Val
+genes.ids <- rownames(h1_drought.ctl_drought)
+names(log.fold.change) <- genes.ids
+names(q.value) <- genes.ids
+activated.c3 <- genes.ids[log.fold.change > log2(1.5) & q.value < 0.1]
+repressed.c3 <- genes.ids[log.fold.change < - log2(1.5) & q.value < 0.1]
+length(activated.c3)
+length(repressed.c3)
+
+log.q.val <- -log10(q.value)
+plot(log.fold.change,log.q.val,pch=19,col="black",cex=0.8,
+     xlim=c(-6,6),ylim = c(0,4), 
+     xlab="log2(Fold-chage)",ylab="-log10(q-value)",cex.lab=1.5,
+     main="CTL_drought vs H1_drought")
+
+points(x = log.fold.change[activated.c3],
+       y = log.q.val[activated.c3],col="red",cex=0.8,pch=19)
+points(x = log.fold.change[repressed.c3],
+       y = log.q.val[repressed.c3],col="blue",cex=0.8,pch=19)
+arrows(log.fold.change["AT3G15500"],log.q.val["AT3G15500"],2.5,2.5,length=0)
+text(2.9,2.5,"NAC3",cex=0.7)
+
+write.table(activated.c3,file="activated_h1_drought_ctl_drought.txt",row.names = FALSE,quote=FALSE,col.names = FALSE)
+write.table(repressed.c3,file="repressed_h1_drought_ctl_drought.txt",row.names = FALSE,quote=FALSE,col.names = FALSE)
+```
+
+[Genes activados comparación 3](activated_h1_drought_ctl_drought.txt) [Genes reprimidos comparación 3](repressed_h1_drought_ctl_drought.txt)
+
+En esta comparación, se detectaron 84 genes activados y 28 genes reprimidos. Entre los genes activados, se incluye NAC3, un factor de transcripción relacionado con procesos de desarrollo.
+
+**Comparación 4. H1_water vs CTL_water**
+
+Con esta cuarta comparación, estudiamos el efecto de la inoculación con *Aeromonas* cuando *Arabidopsis* se encuentra en condiciones basales.
+
+```{r}
+h1_water.ctl_water <- topTable(contrast.results, number=32833,coef=4,sort.by="logFC")
+log.fold.change <- h1_water.ctl_water$logFC
+q.value <- h1_water.ctl_water$adj.P.Val
+genes.ids <- rownames(h1_water.ctl_water)
+names(log.fold.change) <- genes.ids
+names(q.value) <- genes.ids
+activated.c4 <- genes.ids[log.fold.change > log2(1.5) & q.value < 0.1]
+repressed.c4 <- genes.ids[log.fold.change < - log2(1.5) & q.value < 0.1]
+length(activated.c4)
+length(repressed.c4)
+
+log.q.val <- -log10(q.value)
+plot(log.fold.change,log.q.val,pch=19,col="black",cex=0.8,
+     xlim=c(-6,6),ylim = c(0,4), 
+     xlab="log2(Fold-chage)",ylab="-log10(q-value)",cex.lab=1.5,
+     main="H1_water vs CTL_water")
+
+points(x = log.fold.change[activated.c4],
+       y = log.q.val[activated.c4],col="red",cex=0.8,pch=19)
+points(x = log.fold.change[repressed.c4],
+       y = log.q.val[repressed.c4],col="blue",cex=0.8,pch=19)
+```
+
+Podemos observar que ningún gen se expresa diferencialmente en esta comparación. Cuando las plantas no están sometidas a estrés por sequía, el tratamiento con *Aeromonas* no tiene ningún efecto sobre el transcriptoma de la parte aérea.
+
+**Comparación 5. H1_drought vs CTL_water**
+
+Por último, comparamos la expresión génica en las plantas control (regadas y sin inocular) con plantas inoculadas con *Aeromonas* y en condiciones de sequía. De esta forma, podremos observar un efecto sinérgico entre el tratamiento de sequía y el efecto que produce la bacteria.
+
+```{r}
+h1_drought.ctl_water <- topTable(contrast.results, number=32833,coef=5,sort.by="logFC")
+log.fold.change <- h1_drought.ctl_water$logFC
+q.value <- h1_drought.ctl_water$adj.P.Val
+genes.ids <- rownames(h1_drought.ctl_water)
+names(log.fold.change) <- genes.ids
+names(q.value) <- genes.ids
+activated.c5 <- genes.ids[log.fold.change > log2(1.5) & q.value < 0.1]
+repressed.c5 <- genes.ids[log.fold.change < - log2(1.5) & q.value < 0.1]
+length(activated.c5)
+length(repressed.c5)
+
+log.q.val <- -log10(q.value)
+plot(log.fold.change,log.q.val,pch=19,col="black",cex=0.8,
+     xlim=c(-6,6),ylim = c(0,4), 
+     xlab="log2(Fold-chage)",ylab="-log10(q-value)",cex.lab=1.5,
+     main="H1_drought vs CTL_water")
+
+points(x = log.fold.change[activated.c5],
+       y = log.q.val[activated.c5],col="red",cex=0.8,pch=19)
+points(x = log.fold.change[repressed.c5],
+       y = log.q.val[repressed.c5],col="blue",cex=0.8,pch=19)
+arrows(log.fold.change["AT1G74930"],log.q.val["AT1G74930"],3.8,3.6,length=0)
+text(4.3,3.7,"ORA47",cex=0.7)
+arrows(log.fold.change["AT5G47220"],log.q.val["AT5G47220"],4,3,length=0)
+text(4,2.8,"ERF2",cex=0.7)
+
+
+write.table(activated.c5,file="activated_h1_drought_ctl_water.txt",row.names = FALSE,quote=FALSE,col.names = FALSE)
+write.table(repressed.c5,file="repressed_h1_drought_ctl_water.txt",row.names = FALSE,quote=FALSE,col.names = FALSE)
+```
+
+[Genes activados comparación 5](activated_h1_drought_ctl_water.txt) [Genes reprimidos comparación 5](repressed_h1_drought_ctl_water.txt)
+
+En esta última comparación, se han identificado 556 genes activados y 150 genes reprimidos. Se destaca el gen ORA47, factor de transcripción que también pertenece a la familia conocida como ERF/AP2.
+
+**Análisis con DESeq2**
+
+```{r}
+library(DESeq2)
+gene.count.matrix <- read.table(file = "gene_count_matrix.csv",header = T,sep = ",")
+gene.ids <- sapply(X = strsplit(x = gene.count.matrix$gene_id,split = "\\|"),FUN = function(x){return(x[1])})
+
+gene.count.matrix <- gene.count.matrix[,-1]
+rownames(gene.count.matrix) <- gene.ids
+
+dds <- DESeqDataSetFromMatrix(countData=gene.count.matrix, colData=pheno.data, design = ~ aeromonas + drought)
+dds$aeromonas <- relevel(dds$aeromonas, ref = "ctl")
+dds$drought <- relevel(dds$drought, ref = "ctl")
+
+dds <- DESeq(dds) 
+mod_mat <- model.matrix(design(dds), colData(dds))
+ctl_water <- colMeans(mod_mat[dds$aeromonas == "ctl" & dds$drought == "ctl", ])
+ctl_drought <- colMeans(mod_mat[dds$aeromonas == "ctl" & dds$drought == "drought", ])
+h1_water <- colMeans(mod_mat[dds$aeromonas == "h1" & dds$drought == "ctl", ])
+h1_drought <- colMeans(mod_mat[dds$aeromonas == "h1" & dds$drought == "drought", ])
+
+# Comparación 1
+res1 <- results(dds, contrast = ctl_drought - ctl_water)
+genes.ids <- rownames(res1)
+log.fold.change <- res1$log2FoldChange
+q.value <- res1$padj
+names(log.fold.change) <- genes.ids
+names(q.value) <- genes.ids
+activated.c1.deseq2 <- genes.ids[log.fold.change > log2(1.5) & q.value < 0.1]
+activated.c1.deseq2 <- activated.c1.deseq2[!is.na(activated.c1.deseq2)]
+repressed.c1.deseq2 <- genes.ids[log.fold.change < - log2(1.5) & q.value < 0.1]
+repressed.c1.deseq2 <- repressed.c1.deseq2[!is.na(repressed.c1.deseq2)]
+length(activated.c1.deseq2)
+length(repressed.c1.deseq2)
+
+# Comparación 2
+res2 <- results(dds, contrast = h1_drought - h1_water)
+genes.ids <- rownames(res2)
+log.fold.change <- res2$log2FoldChange
+q.value <- res2$padj
+names(log.fold.change) <- genes.ids
+names(q.value) <- genes.ids
+activated.c2.deseq2 <- genes.ids[log.fold.change > log2(1.5) & q.value < 0.1]
+activated.c2.deseq2 <- activated.c2.deseq2[!is.na(activated.c2.deseq2)]
+repressed.c2.deseq2 <- genes.ids[log.fold.change < - log2(1.5) & q.value < 0.1]
+repressed.c2.deseq2 <- repressed.c2.deseq2[!is.na(repressed.c2.deseq2)]
+length(activated.c2.deseq2)
+length(repressed.c2.deseq2)
+
+# Comparación 3
+res3 <- results(dds, contrast = h1_drought - ctl_drought)
+genes.ids <- rownames(res3)
+log.fold.change <- res3$log2FoldChange
+q.value <- res3$padj
+names(log.fold.change) <- genes.ids
+names(q.value) <- genes.ids
+activated.c3.deseq2 <- genes.ids[log.fold.change > log2(1.5) & q.value < 0.1]
+activated.c3.deseq2 <- activated.c3.deseq2[!is.na(activated.c3.deseq2)]
+repressed.c3.deseq2 <- genes.ids[log.fold.change < - log2(1.5) & q.value < 0.1]
+repressed.c3.deseq2 <- repressed.c3.deseq2[!is.na(repressed.c3.deseq2)]
+length(activated.c3.deseq2)
+length(repressed.c3.deseq2)
+
+# Comparación 4
+res4 <- results(dds, contrast = h1_water - ctl_water)
+genes.ids <- rownames(res4)
+log.fold.change <- res4$log2FoldChange
+q.value <- res4$padj
+names(log.fold.change) <- genes.ids
+names(q.value) <- genes.ids
+activated.c4.deseq2 <- genes.ids[log.fold.change > log2(1.5) & q.value < 0.1]
+activated.c4.deseq2 <- activated.c4.deseq2[!is.na(activated.c4.deseq2)]
+repressed.c4.deseq2 <- genes.ids[log.fold.change < - log2(1.5) & q.value < 0.1]
+repressed.c4.deseq2 <- repressed.c4.deseq2[!is.na(repressed.c4.deseq2)]
+length(activated.c4.deseq2)
+length(repressed.c4.deseq2)
+
+# Comparación 5
+res5 <- results(dds, contrast = h1_drought - ctl_water)
+genes.ids <- rownames(res5)
+log.fold.change <- res5$log2FoldChange
+q.value <- res5$padj
+names(log.fold.change) <- genes.ids
+names(q.value) <- genes.ids
+activated.c5.deseq2 <- genes.ids[log.fold.change > log2(1.5) & q.value < 0.1]
+activated.c5.deseq2 <- activated.c5.deseq2[!is.na(activated.c5.deseq2)]
+repressed.c5.deseq2 <- genes.ids[log.fold.change < - log2(1.5) & q.value < 0.1]
+repressed.c5.deseq2 <- repressed.c5.deseq2[!is.na(repressed.c5.deseq2)]
+length(activated.c5.deseq2)
+length(repressed.c5.deseq2)
+```
+
+**Comparación resultados limma vs DESeq2**
+
+```{r}
+library(ggvenn)
+ggvenn(list(limma=c(activated.c2,repressed.c2),DESeq2=c(activated.c2.deseq2,repressed.c2.deseq2)))
+```
+
+```{r}
+ggvenn(list(limma=c(activated.c5,repressed.c5),DESeq2=c(activated.c5.deseq2,repressed.c5.deseq2)))
+```
+
+En estos diagramas de Venn, comparamos los DEGs obtenidos al usar limma con los identificados por DESeq2 en las comparaciones h1_drought vs h1_water y h1_drought vs ctl_drought.
+
+Como podemos ver, los conjuntos de genes obtenidos al analizar los datos con limma y con DESeq2 son bastante diferentes. No esperamos un solapamiento total, ya que existen diferencias entre los análisis con limma (que usa fpkm para medir la expresión génica) y DESeq2 (conteos). Como es típico, DESeq2 identifica un mayor número de DEGs, al realizar análisis más sensibles. Sin embargo, DESeq2 también suele dar lugar a un mayor número de falsos positivos.
+
+Además, en este estudio en concreto, hemos observado que el efecto sobre el transcriptoma es relativamente sutil. En caso de tener un efecto más acusado, en el que pudiéramos establecer umbrales de fold-change y de q-valores más restrictivos, puede que observáramos una concordancia mejor entre los análisis.
+
+**Comparaciones entre conjuntos de genes**
+
+```{r}
+ggvenn(list(degs_drought=c(activated.c1,repressed.c1),degs_h1_drought=c(activated.c5,repressed.c5)))
+```
+
+En este diagrama de Venn, comparamos dos conjuntos de genes:
+
+-   DEGs Ctl_water vs Ctl_drought
+
+-   DEGs Ctl_water vs H1_drought
+
+Podemos observar que existen 116 genes que cambian en ambos casos, es decir, genes que son activados por las condiciones de sequía pero en los que no está implicado *Aeromonas*. Por otro lado, existen 590 genes que cambian al aplicar la sequía a plantas inoculadas pero no en plantas sin inocular. Estos genes deben de ser aquellos cuya expresión cambia gracias a *Aeromonas*, y confieren a la planta una mejor tolerancia a la sequía.
+
+### Análisis de Enriquecimiento de Términos de Ontología Génica
+
+La ontología de genes permite la incorporación de información de forma sistemática e inequívoca a genes mediante anotación. Esta se compone de un vocabulario estructurado (de más genérico a más específico) y controlado de términos que describen los productos génicos en términos de procesos biológicos, componentes celulares y funciones moleculares.
+
+Un enriquecimiento de términos de ontología de genes tiene como objetivo mejorar la representación de la información genética, haciéndola más precisa y completa, de forma que sea posible interpretar de manera efectiva los resultados.
+
+```{r}
+library(clusterProfiler)           
+library(org.At.tair.db)
+library(enrichplot)
+```
+
+**Genes diferencialmente activados H1_drought vs CTL_drought**
+
+En este caso se realiza un enriquecimiento de términos GO del conjunto de genes diferencialemente activados en las plantas de *Arabidopsis thaliana* inoculadas con *Aeromonas* sp. en condiciones de sequía en comparación con las plantas no inoculadas en condiciones de sequía.
+
+```{r}
+activated_h1_d_ctl_d <- read.table(file="activated_h1_drought_ctl_drought.txt")[[1]]
+
+activated_h1_d_ctl_d.atha.enrich.go <- enrichGO(gene          = activated_h1_d_ctl_d,
+                                                OrgDb         = org.At.tair.db,
+                                                ont           = "BP",
+                                                pAdjustMethod = "BH",
+                                                pvalueCutoff  = 0.05,
+                                                readable      = FALSE, 
+                                                keyType = "TAIR") 
+
+df.1 <- as.data.frame(activated_h1_d_ctl_d.atha.enrich.go)
+
+write.table(as.data.frame(df.1$pvalue,df.1$ID), file = "activated_h1_d_ctl_d_revigo", quote = FALSE)
+```
+
+![Captura ReVIGO.](images/treemap_activated_h1_d_ctl_d.png)
+
+|  Término de GO y q-valor  |                 Descripción                  | Genes Representativos |
+|:------------------:|:-------------------------------:|:-----------------:|
+| <GO:0002376> 7.369807e-05 |            immune system process             |   ERF2/PEN3/CYP81F2   |
+| <GO:0008219> 0.0005994776 |                  cell death                  |   PEN3/PLA2A/NUDT7    |
+| <GO:0009867> 1.141716e-12 |   jasmonic acid mediated signaling pathway   |    JAZ7/ERF2/NAC3     |
+| <GO:0042430> 3.081945e-05 | indole-containing compound metabolic process |  HSPRO2/PEN3/CYP81F2  |
+| <GO:0042908> 0.004019064  |             xenobiotic transport             |         DTX18         |
+| <GO:0090693> 0.001098587  |            plant organ senescence            |   BGLU11/MKK9/NAC6    |
+
+En la tabla se puede observar el proceso biológico mayormente representado de cada grupo de procesos relacionados entre sí que se encuentran significativamente alterados. Entre los más representados, el de la ruta de señalización mediada por el ácido jasmónico (JA) está significativamente enriquecido en comparación con los demás al tener el qvalor más bajo. Estas observaciones se pueden corroborar al ver la imagen del treemap en la que se aprecia como el bloque más grande de todos es el correspondiente a esta ruta. Además, el tamaño del mismo grupo (bloques del mismo color) ocupa claramente casi toda la imagen indicando que son procesos muy importantes para la resistencia al estrés hídrico proporcionada por *Aeromonas* sp., es por eso que son rutas mayormente activadas.
+
+Para más inri, el análisis GO destaca DEGs relacionados con JA, como JAZ7, ERF2 y NAC3, que se sabe que promueven la resistencia de las plantas al estrés por deshidratación. NAC3 se ha obtenido anteriormente en los análisis de genes diferencialmente activados para estas condiciones, y ERF2 parece estar también involucrado en otros procesos enriquecidos. También podemos destacar PEN3 al regular varios proceso de importancia.
+
+**Genes diferencialmente reprimidos H1_drought vs CTL_drought**
+
+En este caso se realiza un enriquecimiento de términos GO el conjunto de genes diferencialemente reprimidos en las plantas de *Arabidopsis thaliana* inoculadas con *Aeromonas* sp. en condiciones de sequía en comparación con las plantas no inoculadas en condiciones de sequía.
+
+```{r}
+repressed_h1_d_ctl_d <- read.table(file="repressed_h1_drought_ctl_drought.txt")[[1]]
+
+repressed_h1_d_ctl_d.atha.enrich.go <- enrichGO(gene          = repressed_h1_d_ctl_d,
+                                                OrgDb         = org.At.tair.db,
+                                                ont           = "BP",
+                                                pAdjustMethod = "BH",
+                                                pvalueCutoff  = 0.05,
+                                                readable      = FALSE,
+                                                keyType = "TAIR")
+
+df.2 <- as.data.frame(repressed_h1_d_ctl_d.atha.enrich.go)
+
+write.table(as.data.frame(df.2$pvalue,df.2$ID), file="repressed_h1_d_ctl_d_revigo", quote=FALSE)
+```
+
+![Captura ReVIGO.](images/treemap_repressed_h1_d_ctl_d.png)
+
+|  Término de GO y q-valor  |                 Descripción                 | Genes Representativos |
+|:-------------------:|:------------------------------:|:-----------------:|
+| <GO:0009639> 0.0002585459 |      response to red or far red light       |   ERF34/ERD9/BBX32    |
+| <GO:0009813> 0.009531447  |       flavonoid biosynthetic process        |       TT4/FLS1        |
+|  <GO:0031537> 0.0118085   | regulation of anthocyanin metabolic process |          TT4          |
+
+En este caso es posible ver tanto en el treemap como en la tabla que hay un enriquecimiento de genes reprimidos en respuesta a la luz roja o roja lejana en las plantas inoculadas, seguido del proceso de biosíntesis de flavonoides.
+
+**Genes diferencialmente activados H1_drought vs CTL_water**
+
+En este caso se realiza un enriquecimiento de términos GO el conjunto de genes diferencialmente activados en las plantas de *Arabidopsis thaliana* inoculadas con *Aeromonas* sp. en condiciones de sequía en comparación con las plantas no inoculadas y regadas.
+
+```{r}
+activated_h1_d_ctl_w <- read.table(file="activated_h1_drought_ctl_water.txt")[[1]]
+
+activated_h1_d_ctl_w.atha.enrich.go <- enrichGO(gene          = activated_h1_d_ctl_w,
+                                                OrgDb         = org.At.tair.db,
+                                                ont           = "BP",
+                                                pAdjustMethod = "BH",
+                                                pvalueCutoff  = 0.05,
+                                                readable      = FALSE,
+                                                keyType = "TAIR")
+
+df.3 <- as.data.frame(activated_h1_d_ctl_w.atha.enrich.go)
+
+write.table(as.data.frame(df.3$pvalue,df.3$ID), file="activated_h1_d_ctl_w_revigo", quote=FALSE)
+```
+
+![Captura ReVIGO.](images/treemap_activated_h1_d_ctl_w.png)
+
+|  Término de GO y q-valor  |                  Descripción                  | Genes Representativos |
+|:------------------:|:-------------------------------:|:-----------------:|
+| <GO:0002376> 4.074928e-18 |             immune system process             |    ERF2/PLA2A/PEN3    |
+| <GO:0008219> 1.272887e-08 |                  cell death                   |    PLA2A/PEN3/NAC6    |
+| <GO:0009751> 2.481618e-49 |          response to salicylic acid           |  BT2/ATS40.4/SYP122   |
+| <GO:0009966> 1.864563e-14 |       regulation of signal transduction       |    JAZ7/JAZ1/JAZ6     |
+| <GO:0010150> 3.679929e-21 |                leaf senescence                |    RD26/MKK9/SAG21    |
+| <GO:0012501> 8.360128e-09 |             programmed cell death             |    PLA2A/PEN3/NAC6    |
+| <GO:0034219> 0.003716663  |     carbohydrate transmembrane transport      |    ERD6/STP1/ESL1     |
+| <GO:0042430> 2.39423e-23  | indole-containing compound metabolic process  |  IGMT1/UGT74E2/MKK9   |
+|  <GO:0045229> 0.01758479  | external encapsulating structure organization |   PEN3/TCH4/CYP81F2   |
+
+Cabe resaltar la respuesta al ácido salicílico por el gran enriquecimiento que tiene en comparación con el resto de procesos, al igual que todo el grupo en comparación con el resto de grupos.
+
+En relación a los genes más representativos se puede destacar el ERF2 correspondiente a la activación del sistema inmunitario, uno de los procesos mayormente enriquecidos. Por otro lado, volvemos a ver el gen JAZ7 al igual que en la comparación de genes activados H1_drought vs CTL_drought, lo que da a entender que es fundamental para la respuesta al estrés hídrico.
+
+**Genes diferencialmente reprimidos H1_drought vs CTL_water**
+
+En este caso se realiza un enriquecimiento de términos GO el conjunto de genes diferencialmente reprimidos en las plantas de *Arabidopsis thaliana* inoculadas con *Aeromonas* sp. en condiciones de sequía en comparación con las plantas no inoculadas y regadas.
+
+```{r}
+repressed_h1_d_ctl_w <- read.table(file="repressed_h1_drought_ctl_water.txt")[[1]]
+
+repressed_h1_d_ctl_w.atha.enrich.go <- enrichGO(gene          = repressed_h1_d_ctl_w,
+                                                OrgDb         = org.At.tair.db,
+                                                ont           = "BP",
+                                                pAdjustMethod = "BH",
+                                                pvalueCutoff  = 0.05,
+                                                readable      = FALSE,
+                                                keyType = "TAIR")
+
+df.4 <- as.data.frame(repressed_h1_d_ctl_w.atha.enrich.go)
+
+write.table(as.data.frame(df.4$pvalue,df.4$ID), file="repressed_h1_d_ctl_w_revigo", quote=FALSE)
+```
+
+![Captura ReVIGO.](images/treemap_repressed_h1_d_ctl_w.png)
+
+|  Término de GO y q-valor  |            Descripción             | Genes Representativos |
+|:---------------------:|:---------------------------:|:------------------:|
+| <GO:0000278> 0.001719728  |         mitotic cell cycle         | CYCA1;1/TPX2/CYCB1;1  |
+|  <GO:0007017> 0.01155884  |     microtubule-based process      |   TPX2/SP1L4/PAKRP2   |
+|  <GO:0008356> 0.01895755  |      asymmetric cell division      |       TMM/BASL        |
+| <GO:0009411> 0.0008523922 |           response to UV           |    ELIP1/MYB4/F3H     |
+| <GO:0009813> 0.0001719778 |   flavonoid biosynthetic process   |     FLS1/F3H/RHM1     |
+| <GO:0010374> 0.001380033  |    stomatal complex development    |     TMM/CKX6/EPF2     |
+| <GO:0042546> 0.004344226  |        cell wall biogenesis        |   ERF34/AGP17/RGP1    |
+| <GO:0051338> 0.003546343  | regulation of transferase activity | CYCA1;1/TPX2/CDC20.1  |
+
+En este caso no se observan grandes diferencias en cuanto al enriquecimiento de procesos o grupos de procesos siendo los q-valores bastante parecidos y el treemap bastante homogéneo en cuanto a tamaños. Aunque los más enriquecidos coinciden con los de la condición de los genes diferencialmente reprimidos H1_drought vs CTL_drought.
+
+**Enriquecimiento de términos de rutas KEGG**
+
+```{r}
+# Genes diferencialmente activados H1_drought vs CTL_drought
+activated_h1_d_ctl_d.atha.enrich.kegg <- enrichKEGG(gene  = activated_h1_d_ctl_d,
+                                                    organism = "ath",
+                                                    pAdjustMethod = "BH",
+                                                    pvalueCutoff  = 0.05)
+
+df.activated_h1_d_ctl_d.atha.enrich.kegg <- as.data.frame(activated_h1_d_ctl_d.atha.enrich.kegg)
+
+# Genes diferencialmente activados H1_drought vs CTL_water
+activated_h1_d_ctl_w.atha.enrich.kegg <- enrichKEGG(gene  = activated_h1_d_ctl_w,
+                                                    organism = "ath",
+                                                    pAdjustMethod = "BH",
+                                                    pvalueCutoff  = 0.05)
+
+df.activated_h1_d_ctl_w.atha.enrich.kegg <- as.data.frame(activated_h1_d_ctl_w.atha.enrich.kegg)
+```
+
+Visualización de la ruta del metabolismo del ácido alfa-linolénico.
+
+```{r}
+library(pathview)
+```
+
+```{r}
+pathview(gene.data = sort(log.fold.change,decreasing = TRUE),
+         pathway.id = "ath00592",
+         species = "ath",
+         limit = list(gene=max(abs(log.fold.change)), cpd=1), gene.idtype = "TAIR")
+```
+
+![](images/ath00592.png)
+
+```{r}
+# Genes diferencialmente reprimidos H1_drought vs CTL_drought
+repressed_h1_d_ctl_w.atha.enrich.kegg <- enrichKEGG(gene  = repressed_h1_d_ctl_w,
+                                                    organism = "ath",
+                                                    pAdjustMethod = "BH",
+                                                    pvalueCutoff  = 0.05)
+
+df.repressed_h1_d_ctl_w.atha.enrich.kegg <- as.data.frame(repressed_h1_d_ctl_w.atha.enrich.kegg)
+
+# Genes diferencialmente reprimidos H1_drought vs CTL_water
+repressed_h1_d_ctl_d.atha.enrich.kegg <- enrichKEGG(gene  = repressed_h1_d_ctl_d,
+                                                    organism = "ath",
+                                                    pAdjustMethod = "BH",
+                                                    pvalueCutoff  = 0.05)
+
+df.repressed_h1_d_ctl_d.atha.enrich.kegg <- as.data.frame(repressed_h1_d_ctl_d.atha.enrich.kegg)
+```
+
+Visualización de la ruta de biosíntesis de flavonoides.
+
+```{r}
+pathview(gene.data = sort(log.fold.change,decreasing = TRUE),
+         pathway.id = "ath00941",
+         species = "ath",
+         limit = list(gene=max(abs(log.fold.change)), cpd=1), gene.idtype = "TAIR")
+```
+
+![](images/ath00941.png)
+
+## Conclusiones
+
+Con los análisis realizados, hemos obtenido los genes diferencialmente expresados para condiciones de estrés por sequía y al ser inoculada con *Aeromonas* sp. Hemos observado cómo *Arabidopsis thaliana* en condiciones de sequía es capaz de producir una respuesta más fuerte a este estrés abiótico (expresa más genes de forma diferencial) cuando está tratada con *Aeromonas* sp.
+
+Al estudiar el enriquecimiento de términos GO, hemos podido comprobar que, para nuestra sorpresa, los genes que se activan al inocular con *Aeromonas* las plantas en condiciones de sequía están involucradas en la respuesta a estrés hídrico. Nuestros análisis de enriquecimiento también han revelado que el ácido jasmónico juega un papel importante en este proceso. Por otro lado, hemos visto cómo al comparar condiciones en las que planta está regada, el tratamiento con *Aeromonas* sp. no tiene un efecto perjudicial para la misma.
+
+Al igual que en nuestro análisis, al realizar los diagramas de Venn, en el artículo se puede apreciar un comportamiento sinérgico entre *Aeromonas* sp. y la respuesta a estrés por sequía de *Arabidopsis thaliana.* Además, en el artículo también apuntan a la importancia de la ruta de señalización mediada por ácido jasmónico y aparecen ciertos genes de especial importancia para la resistencia a la sequía como son JAZ7, ERF2 y NAC3. Por otro lado, en el estudio muestran como los flavonoides tienen un papel importante en la interacción planta-microorganismo. Esto es coherente con el hecho de que los genes de la ruta de síntesis de flavonoides sean reprimidos cuando la planta es inoculada con *Aeromonas* sp. (como hemos visto en el análisis de enriquecimiento de términos de rutas KEGG).
+
+Un experimento sencillo pero eficaz que nos ayudaría a explicar los efectos que *Aeromonas* sp tendría sobre *Arabidopsis thaliana*, sería comparar dos plantas en condiciones de deshidratación, siendo una de ellas tratadas con la bacteria y la otra no. Para ello, transplantaríamos las dos plantas con una semana de vida y cultivadas previamente bajo las mismas condiciones, a un medio exactamente igual. Tras este paso, a una de las plantas de le inocula una cierta cantidad controlada de *Aeromonas* sp y desde ese mismo momento, comienzan las condiciones de deshidratación. Aproximadamente tras 2 semanas de cultivo, se vuelven a regar. De esta forma se puede comprobar que la planta a la que se le inocula la bacteria, muestra un proceso de recuperación que la planta sin *Aeromonas*, no consigue alcanzar.
+
+## Referencias
+
+He, D., Kaushal, R., Peng, L., Singh, SK., et al (2022). Flavonoid-attracted Aeromonas sp. from the Arabidopsis root microbiome enhances plants dehydration resistance. The ISME Journal (cursiva), Volume 16, Issue 11, pp.2622-2632
