@@ -1,0 +1,13 @@
+sample	group
+ctl_water1	ctl_water
+ctl_water2	ctl_water
+ctl_water3	ctl_water
+ctl_drought1	ctl_drought
+ctl_drought2	ctl_drought
+ctl_drought3	ctl_drought
+h1_water1	h1_water
+h1_water2	h1_water
+h1_water3	h1_water
+h1_drought1	h1_drought
+h1_drought2	h1_drought
+h1_drought3	h1_drought
