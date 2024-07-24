@@ -43,6 +43,7 @@ Conclusions
 Arabidopsis thaliana exhibits enhanced drought resistance when inoculated with Aeromonas sp., primarily through the activation of specific genes and pathways related to stress response. The synergistic effect of Aeromonas sp. and drought stress highlights potential strategies for improving plant resilience to abiotic stress.
 
 How to Use This Repository
+
 Prerequisites
 R and RStudio
 
